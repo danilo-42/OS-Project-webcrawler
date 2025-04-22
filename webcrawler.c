@@ -217,7 +217,7 @@ int main(void) //Dan
         pthread_join(threads[i], NULL);
     }
 
-    // Global curl cleanup
+    // Global curl cleanup 
     curl_global_cleanup();
     return EXIT_SUCCESS;
 }
