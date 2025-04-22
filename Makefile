@@ -1,6 +1,14 @@
 # Makefile for the Multithreaded Web Crawler
 
-# mysys compile: for windows: gcc -std=c11 -Wall -Wextra webcrawler.c -o webcrawler -lcurl -lws2_32 -lcrypt32 -lz
+# instructions to compile for windows run these commands in mysys terminal: 
+
+# navigate to directory: cd "/c/Users/yourusername/Desktop/OS Project/OS-Project-webcrawler"
+# run the following command to compile the code:
+# gcc -std=c11 -Wall -Wextra webcrawler.c -o webcrawler -lcurl -lws2_32 -lcrypt32 -lz
+# make run
+# when finished: 
+# make clean
+
 
 # Compiler flags
 CC = gcc
