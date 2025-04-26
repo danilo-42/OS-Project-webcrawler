@@ -1,5 +1,7 @@
 # OS-Project-webcrawler
-Group project for OS class: create a multithreaded webcrawler
+Group project for OS class: Multithreaded webcrawler
+
+Created by Daniel Nikiforov, Raj Chauhan, Ethan Druce  
 
 # Simplified Multithreaded Web Crawler with Word Counting
 
@@ -7,7 +9,7 @@ Group project for OS class: create a multithreaded webcrawler
 This project uses `pthreads` to fetch multiple web pages concurrently (via `libcurl`) and counts the occurrences of important words in the downloaded HTML content.
 
 **Features**  
-- **Multithreading**: Each URL runs in its own thread  
+- **Multithreading**: Several URLs run in their own threads concurrently.
 - **HTML Fetching**: Saves each page as `page1.html`, `page2.html`, etc.  
 - **Word Counting**: Counts predefined keywords in each HTML file  
 - **Error Handling**: Handles invalid URLs, network failures, and file I/O issues  
@@ -31,13 +33,9 @@ run: ./crawler
 1. Put URLs in `urls.txt` (one per line)  
 2. Run `make all` to compile  
 3. Run `make run` to execute the crawler  
+4. Run `make clean` to clean up the html pages after
 
 **File Structure**  
-
-**How to Use**  
-1. Put URLs in `urls.txt` (one per line)  
-2. Run `make all` to compile  
-3. Run `make run` to execute the crawler  
 
 **File Structure**  
 . ├── crawler.c // Main source code ├── urls.txt // List of URLs ├── Makefile // Build instructions └── page*.html // Downloaded HTML files

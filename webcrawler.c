@@ -5,36 +5,35 @@
 #include <curl/curl.h>
 #include <ctype.h>
 
-// Maximum number of URLs to process
-#define MAX_URLS 150
+#define MAX_TOTAL_URLS 150
 #define MAX_URL_LENGTH 2048
-#define NUM_KEYWORDS 3
-#define THREAD_POOL_SIZE 8 // Number of threads in the pool
+#define MAX_KEYWORDS 5
+#define MAX_KEYWORD_LENGTH 64
 
-// Keywords to search for in HTML pages
-const char *keywords[NUM_KEYWORDS] = {"data", "science", "algorithm"};
-
-// Global counter for total keyword occurrences across all pages
-int total_counts[NUM_KEYWORDS] = {0};
-
-// Mutexes to protect shared data
+// Dynamic variables
+int total_counts[MAX_KEYWORDS] = {0};
+char keywords[MAX_KEYWORDS][MAX_KEYWORD_LENGTH];
 pthread_mutex_t count_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Struct for passing URL + index as a task
+// Task structure
 typedef struct {
     int index;
     char url[MAX_URL_LENGTH];
 } ThreadArgs;
 
-// Task queue for the thread pool
-ThreadArgs task_queue[MAX_URLS];
+// Shared work queue
+ThreadArgs task_queue[MAX_TOTAL_URLS];
 int task_count = 0;
 int current_task = 0;
 
+// User chosen values
+int num_keywords;
+int max_urls;
+int num_threads;
+
 /**
  * Converts a string to lowercase in-place.
- * Used to normalize lines before keyword searching.
  */
 void str_tolower(char *str) {
     for (; *str; ++str) {
@@ -43,8 +42,7 @@ void str_tolower(char *str) {
 }
 
 /**
- * Counts occurrences of a keyword in a line, case-insensitively.
- * Returns the number of matches found.
+ * Counts how many times a keyword appears in a line (case-insensitive).
  */
 int count_keyword_occurrences(const char *line, const char *keyword) {
     int count = 0;
@@ -62,11 +60,9 @@ int count_keyword_occurrences(const char *line, const char *keyword) {
 }
 
 /**
- * Reads a list of URLs from a file (one per line).
- * Populates the given 2D array of strings.
- * Returns the number of URLs read, or -1 on error.
+ * Reads URLs from a file and populates the urls array.
  */
-static int read_urls(const char* filename, char urls[][MAX_URL_LENGTH]) {
+static int read_urls(const char *filename, char urls[][MAX_URL_LENGTH]) {
     FILE *urlFile = fopen(filename, "r");
     if (!urlFile) {
         perror("Error Opening File");
@@ -74,8 +70,8 @@ static int read_urls(const char* filename, char urls[][MAX_URL_LENGTH]) {
     }
 
     int i = 0;
-    while (i < MAX_URLS && fgets(urls[i], MAX_URL_LENGTH, urlFile) != NULL) {
-        urls[i][strcspn(urls[i], "\r\n")] = '\0'; // Strip newline
+    while (i < max_urls && fgets(urls[i], MAX_URL_LENGTH, urlFile) != NULL) {
+        urls[i][strcspn(urls[i], "\r\n")] = '\0'; // Remove newline
         i++;
     }
     fclose(urlFile);
@@ -83,7 +79,7 @@ static int read_urls(const char* filename, char urls[][MAX_URL_LENGTH]) {
 }
 
 /**
- * libcurl callback function to write downloaded HTML directly to a file.
+ * libcurl callback to write downloaded HTML to a file.
  */
 static size_t write_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
     FILE *dataFile = (FILE *)userdata;
@@ -91,8 +87,7 @@ static size_t write_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
 }
 
 /**
- * Downloads a URL's HTML content and saves it to a file on disk.
- * Uses libcurl and follows redirects.
+ * Downloads the given URL and saves to a file.
  */
 static void download_page(const char *url, const char *filename) {
     CURL *curl = curl_easy_init();
@@ -106,7 +101,7 @@ static void download_page(const char *url, const char *filename) {
             if (res != CURLE_OK) {
                 fprintf(stderr, "Failed to fetch URL: %s\n", curl_easy_strerror(res));
             } else {
-                printf("Downloaded %s to %s\n", url, filename);
+                printf("Downloaded %s -> %s\n", url, filename);
             }
             fclose(file);
         } else {
@@ -119,9 +114,7 @@ static void download_page(const char *url, const char *filename) {
 }
 
 /**
- * Opens an HTML file and processes it line-by-line,
- * counting keyword matches for each keyword.
- * Uses str_tolower and count_keyword_occurrences for efficiency.
+ * Processes an HTML file line-by-line, counting keywords.
  */
 static void count_keywords_in_file(const char *filename) {
     FILE *file = fopen(filename, "r");
@@ -130,10 +123,10 @@ static void count_keywords_in_file(const char *filename) {
         return;
     }
 
-    char buffer[4096]; // Process in 4KB chunks (streaming, memory-safe)
+    char buffer[4096];
     while (fgets(buffer, sizeof(buffer), file)) {
         str_tolower(buffer);
-        for (int i = 0; i < NUM_KEYWORDS; i++) {
+        for (int i = 0; i < num_keywords; i++) {
             int count = count_keyword_occurrences(buffer, keywords[i]);
             if (count > 0) {
                 pthread_mutex_lock(&count_mutex);
@@ -146,15 +139,14 @@ static void count_keywords_in_file(const char *filename) {
 }
 
 /**
- * Worker thread function for the thread pool.
- * Pulls one task at a time from the shared queue and processes it.
+ * Worker thread function: fetch and process one task at a time.
  */
 void *thread_func(void *arg) {
     while (1) {
         pthread_mutex_lock(&queue_mutex);
         if (current_task >= task_count) {
             pthread_mutex_unlock(&queue_mutex);
-            break; // No more tasks to process
+            break;
         }
         ThreadArgs task = task_queue[current_task++];
         pthread_mutex_unlock(&queue_mutex);
@@ -168,21 +160,52 @@ void *thread_func(void *arg) {
 }
 
 /**
- * Main entry point:
- * - Initializes curl
- * - Loads URLs from file
- * - Fills a task queue
- * - Spawns a thread pool to process them
- * - Waits for all threads to finish
- * - Prints total keyword counts
+ * Main Program:
+ * - Prompts user for keywords, URL limit, thread count
+ * - Loads URLs
+ * - Sets up thread pool
+ * - Processes tasks
+ * - Prints final report
  */
 int main(void) {
+    // Step 1: Ask for number of keywords
+    printf("Enter number of keywords to search for (2-5): ");
+    scanf("%d", &num_keywords);
+    if (num_keywords < 2 || num_keywords > 5) {
+        printf("Invalid keyword count. Defaulting to 3.\n");
+        num_keywords = 3;
+    }
+
+    // Step 2: Ask for the actual keywords
+    for (int i = 0; i < num_keywords; i++) {
+        printf("Enter keyword #%d (max 63 characters): ", i + 1);
+        scanf("%63s", keywords[i]);
+        str_tolower(keywords[i]);
+    }
+
+    // Step 3: Ask for maximum number of URLs
+    printf("Enter maximum number of URLs to crawl (50-150): ");
+    scanf("%d", &max_urls);
+    if (max_urls < 50 || max_urls > 150) {
+        printf("Invalid URL count. Defaulting to 50.\n");
+        max_urls = 50;
+    }
+
+    // Step 4: Ask for number of threads
+    printf("Enter number of threads to use (1-32): ");
+    scanf("%d", &num_threads);
+    if (num_threads < 1 || num_threads > 32) {
+        printf("Invalid thread count. Defaulting to 8.\n");
+        num_threads = 8;
+    }
+
     if (curl_global_init(CURL_GLOBAL_ALL) != 0) {
         fprintf(stderr, "Failed to initialize curl.\n");
         return EXIT_FAILURE;
     }
 
-    char urls[MAX_URLS][MAX_URL_LENGTH];
+    // Step 5: Read URLs
+    char urls[MAX_TOTAL_URLS][MAX_URL_LENGTH];
     int num_urls = read_urls("urls.txt", urls);
     if (num_urls <= 0) {
         fprintf(stderr, "Failed to read URLs from file.\n");
@@ -190,7 +213,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    // Fill the task queue
+    // Fill task queue
     for (int i = 0; i < num_urls; i++) {
         task_queue[i].index = i;
         strncpy(task_queue[i].url, urls[i], MAX_URL_LENGTH - 1);
@@ -198,24 +221,22 @@ int main(void) {
     }
     task_count = num_urls;
 
-    // Start worker threads
-    pthread_t threads[THREAD_POOL_SIZE];
-    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+    // Step 6: Create threads
+    pthread_t threads[32]; // max 32
+    for (int i = 0; i < num_threads; i++) {
         pthread_create(&threads[i], NULL, thread_func, NULL);
     }
 
-    // Join all threads
-    for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+    for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
     }
 
-    // Final keyword report
+    // Step 7: Print final keyword report
     printf("\n=== Total Keyword Counts Across All Pages ===\n");
-    for (int i = 0; i < NUM_KEYWORDS; i++) {
+    for (int i = 0; i < num_keywords; i++) {
         printf("Keyword '%s': %d occurrences\n", keywords[i], total_counts[i]);
     }
 
-    // Cleanup
     pthread_mutex_destroy(&count_mutex);
     pthread_mutex_destroy(&queue_mutex);
     curl_global_cleanup();
