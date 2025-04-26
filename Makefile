@@ -1,12 +1,12 @@
 # Makefile for the Multithreaded Web Crawler
 
-# Instructions for compiling on Windows (MSYS2):
+# Instructions for compiling on Windows (MSYS2), and linux systems (auto detection):
 # 1. Navigate to project directory:
 #    cd "/c/Users/username/Desktop/OS Project/OS-Project-webcrawler"
 # 2. Compile:
-#    gcc -std=c11 -Wall -Wextra webcrawler.c -o webcrawler -lcurl -lws2_32 -lcrypt32 -lz -lpthread
+#    make
 # 3. Run:
-#    ./webcrawler.exe
+#    make run
 # 4. Clean:
 #    make clean
 
