@@ -278,7 +278,7 @@ int main(void) {
     pthread_mutex_destroy(&queue_mutex);
     curl_global_cleanup();
 
-    // Report total execution time
+    //  Report total execution time
     clock_t end_time = clock();
     double time_taken = (double)(end_time - start_time) / CLOCKS_PER_SEC;
     printf("\nTotal execution time: %.2f seconds\n", time_taken);

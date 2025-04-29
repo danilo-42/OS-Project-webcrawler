@@ -10,7 +10,7 @@
 # 4. Clean:
 #    make clean
 
-# Compiler
+#  Compiler
 CC = gcc
 
 # Base CFLAGS that apply to both OS
