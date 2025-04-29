@@ -122,7 +122,7 @@ static void download_page(const char *url, const char *filename) {
 
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
-            fprintf(stderr, "Failed to fetch URL: %s\n", curl_easy_strerror(res));
+            fprintf(stderr, "Failed to fetch URL: %s --- %s\n", url, curl_easy_strerror(res));
         } else {
             printf("Downloaded %s -> %s\n", url, filename);
         }
@@ -173,6 +173,7 @@ void *thread_func(void *arg) {
 
         if (current_task >= task_count) {
             pthread_mutex_unlock(&queue_mutex);
+            //printf("Thread %lu finished all tasks and is exiting.\n", pthread_self());
             break; // No more tasks left
         }
 
@@ -186,14 +187,14 @@ void *thread_func(void *arg) {
 
         download_page(task.url, filename);
         count_keywords_in_file(filename);
+        //printf("Thread %lu finished processing page %d.\n", pthread_self(), task.index);
     }
     return NULL;
 }
 
-// --- Main Program ---
+// --- Main method ---
 
 /**
- * Main entry point:
  * Prompts user for settings, loads URLs, spawns threads,
  * downloads and processes pages, and prints summary statistics.
  */
@@ -201,7 +202,7 @@ int main(void) {
     printf("=== Web Crawler ===\n");
     printf("This program will crawl a set of URLs and count keyword occurrences.\n");
 
-    // Step 1: Prompt user for number of keywords
+    // Prompt user for number of keywords
     printf("Enter number of keywords to search for (2-5): ");
     scanf("%d", &num_keywords);
     if (num_keywords < 2 || num_keywords > 5) {
@@ -209,14 +210,14 @@ int main(void) {
         num_keywords = 3;
     }
 
-    // Step 2: Ask for actual keywords
+    // Ask for keywords
     for (int i = 0; i < num_keywords; i++) {
         printf("Enter keyword #%d (max 63 characters): ", i + 1);
         scanf("%63s", keywords[i]);
         str_tolower(keywords[i]);
     }
 
-    // Step 3: Ask for maximum number of URLs
+    // Ask for maximum number of URLs
     printf("Enter maximum number of URLs to crawl (50-150): ");
     scanf("%d", &max_urls);
     if (max_urls < 50 || max_urls > 150) {
@@ -224,7 +225,7 @@ int main(void) {
         max_urls = 50;
     }
 
-    // Step 4: Ask for number of threads
+    // Ask for number of threads
     printf("Enter number of threads to use (1-32): ");
     scanf("%d", &num_threads);
     if (num_threads < 1 || num_threads > 32) {
@@ -255,17 +256,19 @@ int main(void) {
     }
     task_count = num_urls;
 
-    // Step 6: Create thread pool
+    // Create thread pool
     pthread_t threads[32];
     for (int i = 0; i < num_threads; i++) {
         pthread_create(&threads[i], NULL, thread_func, NULL);
     }
 
+    printf("\nAll threads created. Main thread is now waiting for workers to finish...\n");
+
     for (int i = 0; i < num_threads; i++) {
         pthread_join(threads[i], NULL);
     }
 
-    // Step 7: Print final report
+    // Print final report
     printf("\n=== Total Keyword Counts Across All Pages ===\n");
     for (int i = 0; i < num_keywords; i++) {
         printf("Keyword '%s': %d occurrences\n", keywords[i], total_counts[i]);
@@ -275,7 +278,7 @@ int main(void) {
     pthread_mutex_destroy(&queue_mutex);
     curl_global_cleanup();
 
-    // Step 8: Report total execution time
+    // Report total execution time
     clock_t end_time = clock();
     double time_taken = (double)(end_time - start_time) / CLOCKS_PER_SEC;
     printf("\nTotal execution time: %.2f seconds\n", time_taken);
